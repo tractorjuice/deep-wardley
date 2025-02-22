@@ -38,7 +38,7 @@ portkey_headers = createHeaders(
 
 # Page config
 st.set_page_config(
-    page_title="Ultimate Wardley Chatbot",
+    page_title="Ultimate Wardley Chatbot (Deep Wardley)",
     page_icon=":material/chess:"
 )
 
@@ -78,7 +78,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # App title
-st.title("Ultimate Wardley Chatbot")
+st.title("Ultimate Wardley Chatbot (Deep Wardley)")
 st.markdown("""
 This assistant helps you learn about Wardley Mapping using information from Simon Wardley's book and other resources.
 """)
@@ -201,8 +201,9 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
 graph = initialize_graph(openai_api_key, portkey_api_key, wardley_map_book)
 
 # Show workflow centred in sidebar
-st.sidebar.write("Graph Model:")
-st.sidebar.image(graph.get_graph().draw_mermaid_png())
+if DEBUG:
+    st.sidebar.write("Graph Model:")
+    st.sidebar.image(graph.get_graph().draw_mermaid_png())
 
 # Display chat messages
 for message in st.session_state.messages:
