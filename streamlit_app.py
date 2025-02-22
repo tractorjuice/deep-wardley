@@ -38,7 +38,7 @@ portkey_headers = createHeaders(
 
 # Page config
 st.set_page_config(
-    page_title="Ultimate Wardley Chatbot (Deep Wardley)",
+    page_title="Deep Wardley - Ultimate Wardley Chatbot",
     page_icon=":material/chess:"
 )
 
@@ -78,7 +78,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # App title
-st.title("Ultimate Wardley Chatbot (Deep Wardley)")
+st.markdown("### Deep Wardley - Ultimate Wardley Chatbot")
 st.markdown("""
 This assistant helps you learn about Wardley Mapping using information from Simon Wardley's book and other resources.
 """)
