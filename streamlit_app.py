@@ -17,7 +17,7 @@ openai_api_key = st.secrets["OPENAI_API_KEY"]
 google_portkey_config = st.secrets["google_portkey_config"]
 index_name = st.secrets["index_name"]
 prompt_template = st.secrets["prompt_template"]
-DEBUG = True
+DEBUG = False
 
 def extract_final_question(response_text):
     """Extract the question from <final_question> tags."""
@@ -165,7 +165,7 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
                         st.markdown("*Metadata:*")
                         st.json(doc.metadata)
                     st.divider()
-                    
+
             # Show rewritten question
             with st.expander("🔄 Question Processing", expanded=False):
                 st.markdown("**Original Question:**")
