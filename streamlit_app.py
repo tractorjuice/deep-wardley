@@ -127,7 +127,8 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
 
             # Extract the rewritten question from the response
             rewritten_question = extract_final_question(rewrite_response.content)
-            st.sidebar.write(rewritten_question)
+            if DEBUG:
+                st.sidebar.write(rewritten_question)
             if rewritten_question is None:
                 # If no tags found, use original question
                 rewritten_question = user_message
