@@ -12,6 +12,7 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain_core.messages import HumanMessage
 from langchain import hub
 
+# Load secrets and configuration
 portkey_api_key = st.secrets["PORTKEY_API_KEY"]
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 google_portkey_config = st.secrets["google_portkey_config"]
@@ -20,15 +21,25 @@ prompt_template = st.secrets["prompt_template"]
 DEBUG = False
 
 def extract_final_question(response_text):
-    """Extract the question from <final_question> tags."""
+    """
+    Extract the rewritten question from <final_question> tags in LLM response.
+    
+    Args:
+        response_text (str): The raw response text from the LLM
+    
+    Returns:
+        str or None: The extracted question or None if no tags found
+    """
     match = re.search(r'<final_question>(.*?)</final_question>', response_text, re.DOTALL)
     if match:
         return match.group(1).strip()
     return None
 
+# Initialize session ID for tracking and tracing
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
+# Create Portkey headers for API calls with session tracking
 portkey_headers = createHeaders(
     api_key=portkey_api_key,
     config=google_portkey_config,
@@ -36,12 +47,13 @@ portkey_headers = createHeaders(
     metadata = {"_user": st.session_state.session_id}
     )
 
-# Page config
+# Page configuration
 st.set_page_config(
     page_title="Deep Wardley - Ultimate Wardley Chatbot",
     page_icon=":material/chess:"
 )
 
+# LLM configuration
 tags = ["Book Creator"]
 temperature = 0.3
 
@@ -54,10 +66,10 @@ if "datastore" not in st.session_state:
 
 if "retriever" not in st.session_state:
     st.session_state.retriever = st.session_state.datastore.as_retriever(
-        search_kwargs={"k": 5}
+        search_kwargs={"k": 5}  # Retrieve top 5 most relevant documents
     )
 
-# Initialize memory in session state
+# Initialize conversation memory with 10-message window
 if "memory" not in st.session_state:
     st.session_state.memory = ConversationBufferWindowMemory(
         k=10,  # Keep last 10 interactions
@@ -66,7 +78,7 @@ if "memory" not in st.session_state:
         output_key="output"
     )
 
-# Create retriever tool
+# Create retriever tool for accessing Wardley Mapping knowledge
 wardley_map_book = create_retriever_tool(
     st.session_state.retriever,
     "Wardley Mapping Books",
@@ -77,21 +89,37 @@ wardley_map_book = create_retriever_tool(
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# App title
+# App title and description
 st.markdown("### Deep Wardley - Ultimate Wardley Chatbot")
 st.markdown("""
 This assistant helps you learn about Wardley Mapping using information from Simon Wardley's book and other resources.
 """)
 
-# Setup LangGraph
+# Setup LangGraph state type
 class State(TypedDict):
+    """
+    State type for LangGraph workflow.
+    Messages are annotated with add_messages for proper handling.
+    """
     messages: Annotated[list, add_messages]
 
 # Initialize graph and LLM
 #@st.cache_resource
 def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
+    """
+    Initialize the LangGraph workflow for conversation processing.
+    
+    Args:
+        _openai_api_key (str): OpenAI API key for authentication
+        _portkey_api_key (str): Portkey API key for routing
+        _retriever_tool (Tool): The retriever tool for accessing knowledge
+        
+    Returns:
+        Graph: Compiled LangGraph for conversation processing
+    """
     graph_builder = StateGraph(State)
 
+    # Initialize LLM with Portkey routing and session tracking
     llm = ChatOpenAI(
         base_url=PORTKEY_GATEWAY_URL,
         default_headers=portkey_headers,
@@ -100,12 +128,20 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
         tags=tags + [f"session_{st.session_state.session_id}"]  # Add session_id to tags
     )
 
-    # Rewrite question prompt
+    # Load prompts from LangChain hub
     rewrite_question_prompt = hub.pull("rewrite_question")
-    # Create a prompt template that uses retrieved context and chat history
     prompt = hub.pull(prompt_template)
 
     def chatbot(state: State):
+        """
+        Main chatbot node that processes user input and generates responses.
+        
+        Args:
+            state (State): Current graph state with messages
+            
+        Returns:
+            dict: Updated state with assistant response
+        """
         # Get the user's message from the last message in state
         last_message = state["messages"][-1]
         user_message = last_message.content
@@ -117,7 +153,7 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
             for msg in chat_history
         ])
 
-        # Rewrite question for RAG
+        # Step 1: Rewrite question for better RAG performance
         with st.spinner("Thinking ... Processing question ..."):
             chain = rewrite_question_prompt | llm
             rewrite_response = chain.invoke({
@@ -135,13 +171,14 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
                 if DEBUG:
                     st.warning("No <final_question> tags found in rewrite response")
 
-        # Use the retriever tool to get relevant context
+        # Step 2: Retrieve relevant context from vector store
         with st.spinner("Thinking ... Checking Sources ..."):
             retrieved_docs = st.session_state.retriever.invoke(rewritten_question)
 
+        # Combine retrieved documents into context
         context = "\n\n".join(doc.page_content for doc in retrieved_docs)
 
-        # Create the final prompt with context and history
+        # Step 3: Generate response using context, history, and question
         with st.spinner("Thinking ... Writing Answer"):
             chain = prompt | llm
             response = chain.invoke({
@@ -156,6 +193,7 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
             {"output": response.content}
         )
 
+        # Display debug information if enabled
         if DEBUG:
             # Show sources in an expander
             with st.expander("📚 Sources Used", expanded=False):
@@ -177,22 +215,28 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
         return {"messages": [response]}
 
     def do_nothing(state: State):
+        """Placeholder node that passes state through unchanged."""
         return {"messages": [response]}
 
     def do_something(state: State):
+        """Placeholder node for future processing capabilities."""
         return {"messages": [response]}
 
     def do_check(state: State):
+        """Conditional check for workflow routing."""
         return "Pass"
 
+    # Add nodes to graph
     graph_builder.add_node("chatbot", chatbot)
-
     graph_builder.add_node("do nothing", do_nothing)
     graph_builder.add_node("do something", do_something)
+    
+    # Add edges and conditional routing
     graph_builder.add_conditional_edges("chatbot", do_check, {"Fail": "do nothing", "Pass": "do something"})
     graph_builder.add_edge("do something", END)
     graph_builder.add_edge("do nothing", END)
 
+    # Set entry point
     graph_builder.set_entry_point("chatbot")
     #graph_builder.set_finish_point("chatbot")
 
@@ -201,29 +245,29 @@ def initialize_graph(_openai_api_key, _portkey_api_key, _retriever_tool):
 # Initialize the graph
 graph = initialize_graph(openai_api_key, portkey_api_key, wardley_map_book)
 
-# Show workflow centred in sidebar
+# Show workflow diagram in sidebar when in debug mode
 if DEBUG:
     st.sidebar.write("Graph Model:")
     st.sidebar.image(graph.get_graph().draw_mermaid_png())
 
-# Display chat messages
+# Display existing chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
+# Chat input interface
 if question := st.chat_input("Ask me about Wardley Mapping"):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
 
-    # Get bot response
+    # Get bot response with streaming
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
 
-        # Stream the response
+        # Stream the response for better UX
         for event in graph.stream({"messages": [("user", question)]}):
             for value in event.values():
                 # Handle both string and message object responses
@@ -239,7 +283,7 @@ if question := st.chat_input("Ask me about Wardley Mapping"):
     # Add assistant response to chat history
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-# Add buttons for memory management
+# UI controls for memory management
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Clear Chat"):
